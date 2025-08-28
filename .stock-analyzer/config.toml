@@ -1,0 +1,40 @@
+default_symbols = [ "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",]
+
+[general]
+default_period = "1y"
+default_investment_amount = 100000.0
+default_max_stocks = 10
+default_risk_tolerance = 0.3
+auto_export_csv = false
+log_level = "INFO"
+
+[api]
+alpha_vantage_api_key = ""
+request_timeout = 30
+max_retries = 3
+
+[analysis]
+rsi_period = 14
+macd_fast = 12
+macd_slow = 26
+macd_signal = 9
+bb_period = 20
+bb_std = 2.0
+volume_period = 20
+
+[portfolio]
+min_correlation = -0.5
+max_correlation = 0.7
+rebalance_period = 30
+
+[output]
+csv_encoding = "utf-8-sig"
+decimal_places = 2
+include_timestamp = true
+output_directory = "output"
+
+[watchlists]
+default = [ "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA",]
+tech = [ "AAPL", "MSFT", "GOOGL", "AMZN", "META", "NVDA", "NFLX", "CRM", "ADBE", "INTC",]
+finance = [ "JPM", "BAC", "WFC", "C", "GS", "MS", "AXP", "BK", "USB", "PNC",]
+healthcare = [ "JNJ", "UNH", "PFE", "MRK", "ABBV", "TMO", "DHR", "BMY", "LLY", "MDT",]

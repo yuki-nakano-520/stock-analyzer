@@ -237,7 +237,7 @@ def create_pattern_features(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_target_variables(
-    data: pd.DataFrame, target_days: List[int] = [1, 5, 10, 30]
+    data: pd.DataFrame, target_days: List[int] | None = None
 ) -> pd.DataFrame:
     """
     予測対象（目的変数）を作成
@@ -249,6 +249,8 @@ def create_target_variables(
     Returns:
         pd.DataFrame: 目的変数
     """
+    if target_days is None:
+        target_days = [1, 5, 10, 30]
     logger.debug(f"目的変数の作成開始: {target_days}日後")
 
     targets = pd.DataFrame(index=data.index)
@@ -330,7 +332,7 @@ def clean_features(
     total_values = len(features) * len(features.columns)
     nan_count_before = features.isnull().sum().sum()
     logger.debug(
-        f"クリーニング前: 全{total_values}値中{nan_count_before}個のNaN ({nan_count_before/total_values*100:.1f}%)"
+        f"クリーニング前: 全{total_values}値中{nan_count_before}個のNaN ({nan_count_before / total_values * 100:.1f}%)"
     )
 
     # 欠損値が多すぎる列を削除（50%以上NaN）
@@ -381,9 +383,9 @@ if __name__ == "__main__":
         print(f"\n📊 作成された特徴量: {len(features.columns)}個")
         print("特徴量の例:")
         for i, col in enumerate(features.columns[:10]):
-            print(f"  {i+1}. {col}")
+            print(f"  {i + 1}. {col}")
         if len(features.columns) > 10:
-            print(f"  ... 他{len(features.columns)-10}個")
+            print(f"  ... 他{len(features.columns) - 10}個")
 
         print(f"\n🎯 目的変数: {len(targets.columns)}個")
         for col in targets.columns:

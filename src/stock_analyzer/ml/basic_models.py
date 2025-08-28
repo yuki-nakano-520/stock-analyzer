@@ -114,7 +114,7 @@ class StockPricePredictor:
 
         logger.debug(f"データ準備完了: X.shape={X.shape}, y.shape={y.shape}")
         logger.info(
-            f"有効なサンプル数: {len(X)}/{len(features)} ({len(X)/len(features)*100:.1f}%)"
+            f"有効なサンプル数: {len(X)}/{len(features)} ({len(X) / len(features) * 100:.1f}%)"
         )
 
         return X, y
@@ -363,7 +363,7 @@ class StockDirectionClassifier:
         y = y[valid_indices]
 
         logger.debug(f"分類データ準備完了: X.shape={X.shape}, y.shape={y.shape}")
-        logger.info(f"クラス分布: 上昇={sum(y)}件, 下降={len(y)-sum(y)}件")
+        logger.info(f"クラス分布: 上昇={sum(y)}件, 下降={len(y) - sum(y)}件")
 
         return X, y
 

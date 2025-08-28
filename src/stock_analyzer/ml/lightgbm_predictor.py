@@ -116,7 +116,7 @@ class LightGBMStockPredictor:
         self,
         features: pd.DataFrame,
         targets: pd.DataFrame,
-        target_columns: List[str] = ["return_5d", "return_30d"],
+        target_columns: List[str] | None = None,
         test_size: float = 0.2,
         n_splits: int = 5,
     ) -> Dict[str, Dict[str, float]]:
@@ -133,6 +133,8 @@ class LightGBMStockPredictor:
         Returns:
             Dict[str, Dict[str, float]]: 各目的変数の評価結果
         """
+        if target_columns is None:
+            target_columns = ["return_5d", "return_30d"]
         logger.info(f"LightGBMモデル訓練開始: {target_columns}")
 
         # データ準備
@@ -157,7 +159,7 @@ class LightGBMStockPredictor:
             y_clean = y[valid_indices]
 
             logger.debug(
-                f"有効データ数: {len(X_clean)}/{len(X)} ({len(X_clean)/len(X)*100:.1f}%)"
+                f"有効データ数: {len(X_clean)}/{len(X)} ({len(X_clean) / len(X) * 100:.1f}%)"
             )
 
             # 訓練・テストデータ分割

@@ -11,6 +11,9 @@ from ..analysis.indicators import analyze_signals, calculate_all_indicators
 # ポートフォリオ分析機能をインポート
 from ..analysis.portfolio import PortfolioAnalyzer, PortfolioConfig, compare_stocks
 
+# 設定管理機能をインポート
+from ..config import PresetManager, get_config, get_preset_symbols
+
 # データ取得機能をインポート
 from ..data.fetchers import get_company_info, get_stock_data
 
@@ -115,7 +118,7 @@ def get_data(symbol: str, period: str, info: bool) -> None:
     except Exception as e:
         logger.error(f"CLI: エラー発生 - {symbol}: {e}")
         click.echo(f"❌ エラー: {e}", err=True)
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
 
 @cli.command()
@@ -241,25 +244,34 @@ def analyze(symbol: str, period: str, signals: bool) -> None:
     except Exception as e:
         logger.error(f"CLI: 分析エラー - {symbol}: {e}")
         click.echo(f"❌ エラー: {e}", err=True)
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
 
 @cli.command()
-@click.argument("symbols", nargs=-1, required=True)
+@click.argument("symbols", nargs=-1, required=False)
 @click.option(
     "--period",
-    default="1y",
+    default=None,
     type=click.Choice(
         ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
     ),
     help="データ取得期間",
 )
-@click.option(
-    "--investment-amount", default=100000.0, type=float, help="総投資金額（USD）"
-)
-@click.option("--max-stocks", default=10, type=int, help="ポートフォリオ最大銘柄数")
-@click.option("--risk-tolerance", default=0.3, type=float, help="リスク許容度（0-1）")
+@click.option("--investment-amount", default=None, type=float, help="総投資金額（USD）")
+@click.option("--max-stocks", default=None, type=int, help="ポートフォリオ最大銘柄数")
+@click.option("--risk-tolerance", default=None, type=float, help="リスク許容度（0-1）")
 @click.option("--export-csv", is_flag=True, help="結果をCSVファイルにエクスポート")
+@click.option(
+    "--symbols-file", type=str, help="銘柄リストファイル (.txt, .csv, .json, .yaml)"
+)
+@click.option(
+    "--preset", type=str, help="プリセット銘柄グループ (例: tech-giants, sp500-top20)"
+)
+@click.option("--watchlist", type=str, help="設定ファイルのウォッチリスト名")
+@click.option("--list-presets", is_flag=True, help="利用可能なプリセット一覧を表示")
+@click.option(
+    "--list-watchlists", is_flag=True, help="利用可能なウォッチリスト一覧を表示"
+)
 def portfolio(
     symbols,
     period: str,
@@ -267,17 +279,89 @@ def portfolio(
     max_stocks: int,
     risk_tolerance: float,
     export_csv: bool,
+    symbols_file: str,
+    preset: str,
+    watchlist: str,
+    list_presets: bool,
+    list_watchlists: bool,
 ) -> None:
     """
     複数銘柄のポートフォリオ分析を実行する
 
     SYMBOLS: 分析する銘柄リスト（例：AAPL MSFT GOOGL AMZN TSLA）
+    または --preset, --watchlist, --symbols-file オプションを使用
     """
     try:
-        logger.info(f"CLI: ポートフォリオ分析開始 - {len(symbols)}銘柄")
+        config = get_config()
+
+        # リスト表示オプションの処理
+        if list_presets:
+            preset_manager = PresetManager()
+            presets = preset_manager.list_presets()
+            click.echo("🎯 利用可能なプリセット:")
+            for preset_name in sorted(presets):
+                info = preset_manager.get_preset_info(preset_name)
+                click.echo(
+                    f"  {preset_name}: {info['description']} ({info['symbol_count']}銘柄)"
+                )
+            return
+
+        if list_watchlists:
+            watchlists = config.list_watchlists()
+            click.echo("📋 利用可能なウォッチリスト:")
+            if watchlists:
+                for wl_name in sorted(watchlists):
+                    wl_symbols = config.get_watchlist(wl_name)
+                    click.echo(f"  {wl_name}: {len(wl_symbols)}銘柄")
+            else:
+                click.echo("  ウォッチリストが設定されていません")
+            return
+
+        # 銘柄リストの決定
+        final_symbols = []
+
+        if symbols_file:
+            click.echo(f"📄 ファイルから銘柄を読み込み: {symbols_file}")
+            final_symbols = config.load_symbols_from_file(symbols_file)
+        elif preset:
+            click.echo(f"🎯 プリセットから銘柄を読み込み: {preset}")
+            final_symbols = get_preset_symbols(preset)
+        elif watchlist:
+            click.echo(f"📋 ウォッチリストから銘柄を読み込み: {watchlist}")
+            final_symbols = config.get_watchlist(watchlist)
+        elif symbols:
+            final_symbols = list(symbols)
+        else:
+            # デフォルト銘柄を使用
+            default_symbols = config.get(
+                "default_symbols", ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+            )
+            click.echo("ℹ️  銘柄が指定されていません。デフォルト銘柄を使用します")
+            final_symbols = default_symbols
+
+        if not final_symbols:
+            click.echo("❌ 分析する銘柄がありません")
+            return
+
+        # 設定値の決定（コマンドライン引数 > 設定ファイル > デフォルト）
+        period = period or config.get("general.default_period", "1y")
+        investment_amount = investment_amount or config.get(
+            "general.default_investment_amount", 100000.0
+        )
+        max_stocks = max_stocks or config.get("general.default_max_stocks", 10)
+        risk_tolerance = risk_tolerance or config.get(
+            "general.default_risk_tolerance", 0.3
+        )
+        export_csv = export_csv or config.get("general.auto_export_csv", False)
+
+        logger.info(f"CLI: ポートフォリオ分析開始 - {len(final_symbols)}銘柄")
 
         click.echo("🎯 ポートフォリオ分析を開始します")
-        click.echo(f"対象銘柄: {', '.join(symbols)}")
+        click.echo(
+            f"対象銘柄: {', '.join(final_symbols[:10])}"
+            + ("..." if len(final_symbols) > 10 else "")
+        )
+        click.echo(f"総銘柄数: {len(final_symbols)}")
         click.echo(f"投資期間: {period}")
         click.echo(f"総投資金額: ${investment_amount:,.0f}")
         click.echo(f"最大銘柄数: {max_stocks}")
@@ -293,7 +377,7 @@ def portfolio(
         click.echo("\n📊 各銘柄の分析中...")
         analysis_results = {}
 
-        for symbol in symbols:
+        for symbol in final_symbols:
             try:
                 click.echo(f"  • {symbol} を分析中...", nl=False)
 
@@ -455,14 +539,14 @@ def portfolio(
     except Exception as e:
         logger.error(f"CLI: ポートフォリオ分析エラー: {e}")
         click.echo(f"❌ エラー: {e}", err=True)
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
 
 
 @cli.command()
-@click.argument("symbols", nargs=-1, required=True)
+@click.argument("symbols", nargs=-1, required=False)
 @click.option(
     "--period",
-    default="1y",
+    default=None,
     type=click.Choice(
         ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
     ),
@@ -470,22 +554,73 @@ def portfolio(
 )
 @click.option("--sort-by", default="investment_score", help="ソート基準")
 @click.option("--export-csv", is_flag=True, help="結果をCSVファイルにエクスポート")
-def compare_advanced(symbols, period: str, sort_by: str, export_csv: bool) -> None:
+@click.option(
+    "--symbols-file", type=str, help="銘柄リストファイル (.txt, .csv, .json, .yaml)"
+)
+@click.option(
+    "--preset", type=str, help="プリセット銘柄グループ (例: tech-giants, sp500-top20)"
+)
+@click.option("--watchlist", type=str, help="設定ファイルのウォッチリスト名")
+def compare_advanced(
+    symbols,
+    period: str,
+    sort_by: str,
+    export_csv: bool,
+    symbols_file: str,
+    preset: str,
+    watchlist: str,
+) -> None:
     """
     複数銘柄の詳細比較を実行する
 
     SYMBOLS: 比較する銘柄リスト（例：AAPL MSFT GOOGL）
+    または --preset, --watchlist, --symbols-file オプションを使用
     """
     try:
-        logger.info(f"CLI: 詳細比較開始 - {len(symbols)}銘柄")
+        config = get_config()
 
-        click.echo(f"📊 {len(symbols)}銘柄の詳細比較を開始します")
-        click.echo(f"対象銘柄: {', '.join(symbols)}")
+        # 銘柄リストの決定
+        final_symbols = []
+
+        if symbols_file:
+            click.echo(f"📄 ファイルから銘柄を読み込み: {symbols_file}")
+            final_symbols = config.load_symbols_from_file(symbols_file)
+        elif preset:
+            click.echo(f"🎯 プリセットから銘柄を読み込み: {preset}")
+            final_symbols = get_preset_symbols(preset)
+        elif watchlist:
+            click.echo(f"📋 ウォッチリストから銘柄を読み込み: {watchlist}")
+            final_symbols = config.get_watchlist(watchlist)
+        elif symbols:
+            final_symbols = list(symbols)
+        else:
+            # デフォルト銘柄を使用
+            default_symbols = config.get(
+                "default_symbols", ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+            )
+            click.echo("ℹ️  銘柄が指定されていません。デフォルト銘柄を使用します")
+            final_symbols = default_symbols
+
+        if not final_symbols:
+            click.echo("❌ 比較する銘柄がありません")
+            return
+
+        # 設定値の決定
+        period = period or config.get("general.default_period", "1y")
+        export_csv = export_csv or config.get("general.auto_export_csv", False)
+
+        logger.info(f"CLI: 詳細比較開始 - {len(final_symbols)}銘柄")
+
+        click.echo(f"📊 {len(final_symbols)}銘柄の詳細比較を開始します")
+        click.echo(
+            f"対象銘柄: {', '.join(final_symbols[:10])}"
+            + ("..." if len(final_symbols) > 10 else "")
+        )
 
         # 各銘柄の分析
         analysis_results = {}
 
-        for symbol in symbols:
+        for symbol in final_symbols:
             try:
                 click.echo(f"  • {symbol} を分析中...", nl=False)
 
@@ -625,7 +760,110 @@ def compare_advanced(symbols, period: str, sort_by: str, export_csv: bool) -> No
     except Exception as e:
         logger.error(f"CLI: 詳細比較エラー: {e}")
         click.echo(f"❌ エラー: {e}", err=True)
-        raise click.ClickException(str(e))
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.option("--show", is_flag=True, help="現在の設定を表示")
+@click.option("--init", is_flag=True, help="デフォルト設定ファイルを作成")
+@click.option(
+    "--set", "set_key", type=str, help="設定値を変更 (例: general.default_period)"
+)
+@click.option("--value", type=str, help="設定する値")
+@click.option("--add-watchlist", type=str, help="新しいウォッチリストを追加")
+@click.option("--watchlist-symbols", type=str, help="ウォッチリスト銘柄 (カンマ区切り)")
+def config(
+    show: bool,
+    init: bool,
+    set_key: str,
+    value: str,
+    add_watchlist: str,
+    watchlist_symbols: str,
+) -> None:
+    """
+    設定ファイルの管理
+    """
+    try:
+        config_manager = get_config()
+
+        if init:
+            click.echo("🔧 デフォルト設定ファイルを作成しています...")
+            # 既存の設定を再作成
+            config_manager._create_default_config()
+            click.echo(f"✅ 設定ファイルを作成しました: {config_manager.config_file}")
+            return
+
+        if show:
+            click.echo("⚙️  現在の設定:")
+            click.echo("=" * 50)
+
+            # 主要設定を表示
+            sections = ["general", "analysis", "portfolio", "output"]
+            for section in sections:
+                click.echo(f"\n[{section}]")
+                section_data = config_manager.get(section, {})
+                if isinstance(section_data, dict):
+                    for config_key, config_value in section_data.items():
+                        click.echo(f"  {config_key} = {config_value}")
+
+            # ウォッチリスト表示
+            click.echo("\n[watchlists]")
+            watchlists = config_manager.get("watchlists", {})
+            for name, symbols in watchlists.items():
+                symbols_str = ", ".join(symbols[:5])
+                if len(symbols) > 5:
+                    symbols_str += f"... ({len(symbols)}銘柄)"
+                click.echo(f"  {name} = [{symbols_str}]")
+
+            click.echo(f"\n設定ファイル: {config_manager.config_file}")
+            return
+
+        if set_key and value:
+            click.echo(f"🔧 設定を変更: {set_key} = {value}")
+
+            # 型変換の試行
+            parsed_value: Any = value
+            try:
+                # 数値の変換を試行
+                if value.lower() in ["true", "false"]:
+                    parsed_value = value.lower() == "true"
+                elif value.replace(".", "").replace("-", "").isdigit():
+                    parsed_value = float(value) if "." in value else int(value)
+                # リストの変換を試行
+                elif value.startswith("[") and value.endswith("]"):
+                    import ast
+
+                    parsed_value = ast.literal_eval(value)
+            except ValueError:
+                pass  # 文字列のまま使用
+
+            config_manager.set(set_key, parsed_value)
+            config_manager.save_config()
+            click.echo("✅ 設定を保存しました")
+            return
+
+        if add_watchlist and watchlist_symbols:
+            click.echo(f"📋 ウォッチリスト '{add_watchlist}' を追加")
+            symbols = [s.strip().upper() for s in watchlist_symbols.split(",")]
+            config_manager.add_watchlist(add_watchlist, symbols)
+            config_manager.save_config()
+            click.echo(f"✅ {len(symbols)}銘柄のウォッチリストを追加しました")
+            return
+
+        # デフォルト：設定表示
+        click.echo("⚙️  設定管理コマンド")
+        click.echo("利用可能なオプション:")
+        click.echo("  --show                 現在の設定を表示")
+        click.echo("  --init                 デフォルト設定ファイルを作成")
+        click.echo("  --set KEY --value VAL  設定値を変更")
+        click.echo(
+            "  --add-watchlist NAME --watchlist-symbols 'SYM1,SYM2'  ウォッチリスト追加"
+        )
+
+    except Exception as e:
+        logger.error(f"CLI: 設定管理エラー: {e}")
+        click.echo(f"❌ エラー: {e}", err=True)
+        raise click.ClickException(str(e)) from e
 
 
 # CLIのエントリーポイント

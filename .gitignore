@@ -46,3 +46,7 @@ coverage.xml
 
 # Project specific
 .secrets.baseline
+
+# Test files
+test_stocks.*
+my_stocks.txt
