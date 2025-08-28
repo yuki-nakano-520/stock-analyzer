@@ -33,6 +33,18 @@ class CompanyInfo(TypedDict):
     current_price: float
 
 
+class AnalysisResult(TypedDict):
+    """株式分析結果の型定義"""
+
+    symbol: str
+    current_price: float
+    investment_score: float
+    risk_score: float
+    recommendation: str
+    predictions: dict[str, float]
+    technical_indicators: dict[str, float]
+
+
 # yfinanceで取得可能な期間の型
 type YFinancePeriod = Literal[
     "1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"

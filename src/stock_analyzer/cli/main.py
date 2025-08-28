@@ -4,11 +4,19 @@ from typing import Any
 
 import click
 
+# フィーチャー生成機能をインポート
 # テクニカル分析機能をインポート
 from ..analysis.indicators import analyze_signals, calculate_all_indicators
 
+# ポートフォリオ分析機能をインポート
+from ..analysis.portfolio import PortfolioAnalyzer, PortfolioConfig, compare_stocks
+
 # データ取得機能をインポート
 from ..data.fetchers import get_company_info, get_stock_data
+
+# ML予測機能をインポート
+# CSV出力機能をインポート
+from ..reports.csv_exporter import JapaneseCsvExporter
 
 
 def _get_logger() -> Any:
@@ -232,6 +240,390 @@ def analyze(symbol: str, period: str, signals: bool) -> None:
 
     except Exception as e:
         logger.error(f"CLI: 分析エラー - {symbol}: {e}")
+        click.echo(f"❌ エラー: {e}", err=True)
+        raise click.ClickException(str(e))
+
+
+@cli.command()
+@click.argument("symbols", nargs=-1, required=True)
+@click.option(
+    "--period",
+    default="1y",
+    type=click.Choice(
+        ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
+    ),
+    help="データ取得期間",
+)
+@click.option(
+    "--investment-amount", default=100000.0, type=float, help="総投資金額（USD）"
+)
+@click.option("--max-stocks", default=10, type=int, help="ポートフォリオ最大銘柄数")
+@click.option("--risk-tolerance", default=0.3, type=float, help="リスク許容度（0-1）")
+@click.option("--export-csv", is_flag=True, help="結果をCSVファイルにエクスポート")
+def portfolio(
+    symbols,
+    period: str,
+    investment_amount: float,
+    max_stocks: int,
+    risk_tolerance: float,
+    export_csv: bool,
+) -> None:
+    """
+    複数銘柄のポートフォリオ分析を実行する
+
+    SYMBOLS: 分析する銘柄リスト（例：AAPL MSFT GOOGL AMZN TSLA）
+    """
+    try:
+        logger.info(f"CLI: ポートフォリオ分析開始 - {len(symbols)}銘柄")
+
+        click.echo("🎯 ポートフォリオ分析を開始します")
+        click.echo(f"対象銘柄: {', '.join(symbols)}")
+        click.echo(f"投資期間: {period}")
+        click.echo(f"総投資金額: ${investment_amount:,.0f}")
+        click.echo(f"最大銘柄数: {max_stocks}")
+
+        # ポートフォリオ設定
+        config = PortfolioConfig(
+            max_stocks=max_stocks,
+            investment_amount=investment_amount,
+            risk_tolerance=risk_tolerance,
+        )
+
+        # 各銘柄の詳細分析を実行
+        click.echo("\n📊 各銘柄の分析中...")
+        analysis_results = {}
+
+        for symbol in symbols:
+            try:
+                click.echo(f"  • {symbol} を分析中...", nl=False)
+
+                # データ取得
+                stock_data = get_stock_data(symbol, period)
+
+                # 分析結果を作成（テクニカル分析ベース）
+                current_price = stock_data["Close"].iloc[-1]
+                indicators = calculate_all_indicators(stock_data)
+
+                # RSIベースの予測（簡易版）
+                rsi = indicators["rsi"]
+                bb_position = indicators["bb_position"]
+                macd = indicators["macd"]
+                volume_ratio = indicators["volume_ratio"]
+
+                # 簡易予測ロジック
+                if rsi < 30:  # 売られすぎ
+                    return_5d = 3.0 + (30 - rsi) * 0.2
+                    return_30d = 8.0 + (30 - rsi) * 0.5
+                elif rsi > 70:  # 買われすぎ
+                    return_5d = -2.0 - (rsi - 70) * 0.1
+                    return_30d = -5.0 - (rsi - 70) * 0.3
+                else:  # 中間
+                    return_5d = 1.5 + macd * 2.0
+                    return_30d = 5.0 + macd * 3.0
+
+                # ボリンジャーバンドとMACD調整
+                if bb_position > 0.8:
+                    return_5d -= 1.0
+                    return_30d -= 2.0
+                elif bb_position < 0.2:
+                    return_5d += 1.0
+                    return_30d += 2.0
+
+                # 出来高調整
+                if volume_ratio > 1.5:
+                    return_5d *= 1.2
+                    return_30d *= 1.1
+
+                # 投資スコア計算
+                investment_score = min(
+                    100,
+                    max(0, 50 + return_5d * 8 + return_30d * 3 - abs(rsi - 50) * 0.3),
+                )
+
+                # リスクスコア計算
+                volatility_risk = abs(bb_position - 0.5) * 100
+                rsi_risk = (
+                    max(abs(rsi - 30), abs(rsi - 70))
+                    if rsi < 30 or rsi > 70
+                    else abs(rsi - 50)
+                )
+                risk_score = min(100, max(0, volatility_risk + rsi_risk))
+
+                # 推奨度決定
+                if investment_score >= 75 and risk_score < 40:
+                    recommendation = "強い買い"
+                elif investment_score >= 60 and risk_score < 60:
+                    recommendation = "買い"
+                elif investment_score >= 40:
+                    recommendation = "ホールド"
+                else:
+                    recommendation = "売り"
+
+                # 擬似的な AnalysisResult 構造体を作成
+                from types import SimpleNamespace
+
+                analysis_result = SimpleNamespace(
+                    symbol=symbol,
+                    current_price=current_price,
+                    investment_score=investment_score,
+                    risk_score=risk_score,
+                    recommendation=recommendation,
+                    predictions={"return_5d": return_5d, "return_30d": return_30d},
+                    technical_indicators=indicators,
+                )
+
+                analysis_results[symbol] = analysis_result
+                click.echo(" ✅")
+
+            except Exception as e:
+                click.echo(f" ❌ エラー: {e}")
+                logger.warning(f"銘柄 {symbol} の分析に失敗: {e}")
+
+        if not analysis_results:
+            click.echo("❌ 分析できる銘柄がありませんでした")
+            return
+
+        click.echo("\n🎯 ポートフォリオ最適化中...")
+
+        # ポートフォリオ分析実行
+        portfolio_analyzer = PortfolioAnalyzer(config)
+        portfolio_result = portfolio_analyzer.analyze_multiple_stocks(
+            list(analysis_results.keys()), analysis_results, period
+        )
+
+        # 結果表示
+        click.echo("\n📈 ポートフォリオ分析結果:")
+        click.echo("=" * 50)
+
+        # サマリー表示
+        summary = portfolio_result["analysis_summary"]
+        for key, value in summary.items():
+            click.echo(f"{key}: {value}")
+
+        # ポートフォリオ構成表示
+        click.echo("\n💰 推奨ポートフォリオ構成:")
+        portfolio_stocks = portfolio_result["portfolio_stocks"]
+        for stock in portfolio_stocks:
+            weight_pct = stock.weight * 100
+            click.echo(
+                f"  {stock.symbol}: {weight_pct:.1f}% (${stock.allocation_amount:,.0f}) "
+                f"- {stock.recommendation} (スコア: {stock.investment_score:.1f})"
+            )
+
+        # 推奨アクション表示
+        recommendations = portfolio_result["recommendations"]
+        click.echo(f"\n🎯 推奨アクション: {recommendations['action']}")
+        click.echo(f"リスク評価: {recommendations['risk_assessment']}")
+        if recommendations["reasoning"]:
+            click.echo("理由:")
+            for reason in recommendations["reasoning"]:
+                click.echo(f"  • {reason}")
+
+        # CSV出力
+        if export_csv:
+            click.echo("\n💾 CSV出力中...")
+            try:
+                exporter = JapaneseCsvExporter()
+
+                # 個別銘柄のCSV出力
+                output_files = []
+                for symbol, result in analysis_results.items():
+                    # 簡易データ準備
+                    data = get_stock_data(symbol, "5d")  # 最新5日分
+
+                    output_file = exporter.export_analysis_to_csv(
+                        data=data, analysis_result=result, symbol=symbol
+                    )
+                    output_files.append(output_file)
+
+                # ポートフォリオサマリーのCSV出力
+                summary_file = exporter.export_portfolio_summary(
+                    portfolio_result, analysis_results
+                )
+                output_files.append(summary_file)
+
+                click.echo("CSV出力完了:")
+                for file in output_files:
+                    click.echo(f"  📄 {file}")
+
+            except Exception as e:
+                click.echo(f"❌ CSV出力エラー: {e}")
+                logger.error(f"CSV出力エラー: {e}")
+
+        logger.info(f"CLI: ポートフォリオ分析完了 - {len(portfolio_stocks)}銘柄選択")
+
+    except Exception as e:
+        logger.error(f"CLI: ポートフォリオ分析エラー: {e}")
+        click.echo(f"❌ エラー: {e}", err=True)
+        raise click.ClickException(str(e))
+
+
+@cli.command()
+@click.argument("symbols", nargs=-1, required=True)
+@click.option(
+    "--period",
+    default="1y",
+    type=click.Choice(
+        ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"]
+    ),
+    help="データ取得期間",
+)
+@click.option("--sort-by", default="investment_score", help="ソート基準")
+@click.option("--export-csv", is_flag=True, help="結果をCSVファイルにエクスポート")
+def compare_advanced(symbols, period: str, sort_by: str, export_csv: bool) -> None:
+    """
+    複数銘柄の詳細比較を実行する
+
+    SYMBOLS: 比較する銘柄リスト（例：AAPL MSFT GOOGL）
+    """
+    try:
+        logger.info(f"CLI: 詳細比較開始 - {len(symbols)}銘柄")
+
+        click.echo(f"📊 {len(symbols)}銘柄の詳細比較を開始します")
+        click.echo(f"対象銘柄: {', '.join(symbols)}")
+
+        # 各銘柄の分析
+        analysis_results = {}
+
+        for symbol in symbols:
+            try:
+                click.echo(f"  • {symbol} を分析中...", nl=False)
+
+                # データ取得と分析（portfolioコマンドと同様の処理）
+                stock_data = get_stock_data(symbol, period)
+                current_price = stock_data["Close"].iloc[-1]
+                indicators = calculate_all_indicators(stock_data)
+
+                # RSIベースの予測（簡易版）
+                rsi = indicators["rsi"]
+                bb_position = indicators["bb_position"]
+                macd = indicators["macd"]
+                volume_ratio = indicators["volume_ratio"]
+
+                # 簡易予測ロジック
+                if rsi < 30:  # 売られすぎ
+                    return_5d = 3.0 + (30 - rsi) * 0.2
+                    return_30d = 8.0 + (30 - rsi) * 0.5
+                elif rsi > 70:  # 買われすぎ
+                    return_5d = -2.0 - (rsi - 70) * 0.1
+                    return_30d = -5.0 - (rsi - 70) * 0.3
+                else:  # 中間
+                    return_5d = 1.5 + macd * 2.0
+                    return_30d = 5.0 + macd * 3.0
+
+                # ボリンジャーバンドとMACD調整
+                if bb_position > 0.8:
+                    return_5d -= 1.0
+                    return_30d -= 2.0
+                elif bb_position < 0.2:
+                    return_5d += 1.0
+                    return_30d += 2.0
+
+                # 出来高調整
+                if volume_ratio > 1.5:
+                    return_5d *= 1.2
+                    return_30d *= 1.1
+
+                # 投資スコア計算
+                investment_score = min(
+                    100,
+                    max(0, 50 + return_5d * 8 + return_30d * 3 - abs(rsi - 50) * 0.3),
+                )
+
+                # リスクスコア計算
+                volatility_risk = abs(bb_position - 0.5) * 100
+                rsi_risk = (
+                    max(abs(rsi - 30), abs(rsi - 70))
+                    if rsi < 30 or rsi > 70
+                    else abs(rsi - 50)
+                )
+                risk_score = min(100, max(0, volatility_risk + rsi_risk))
+
+                # 推奨度決定
+                if investment_score >= 75 and risk_score < 40:
+                    recommendation = "強い買い"
+                elif investment_score >= 60 and risk_score < 60:
+                    recommendation = "買い"
+                elif investment_score >= 40:
+                    recommendation = "ホールド"
+                else:
+                    recommendation = "売り"
+
+                from types import SimpleNamespace
+
+                analysis_result = SimpleNamespace(
+                    symbol=symbol,
+                    current_price=current_price,
+                    investment_score=investment_score,
+                    risk_score=risk_score,
+                    recommendation=recommendation,
+                    predictions={"return_5d": return_5d, "return_30d": return_30d},
+                    technical_indicators=indicators,
+                )
+
+                analysis_results[symbol] = analysis_result
+                click.echo(" ✅")
+
+            except Exception as e:
+                click.echo(f" ❌ エラー: {e}")
+                logger.warning(f"銘柄 {symbol} の分析に失敗: {e}")
+
+        if not analysis_results:
+            click.echo("❌ 分析できる銘柄がありませんでした")
+            return
+
+        # 比較テーブル作成
+        comparison_df = compare_stocks(analysis_results, sort_by=sort_by)
+
+        # 結果表示
+        click.echo(f"\n📊 銘柄比較結果 (並び順: {sort_by}):")
+        click.echo("=" * 80)
+
+        # ヘッダー
+        click.echo(
+            f"{'銘柄':<8} {'価格($)':<10} {'投資ｽｺｱ':<8} {'ﾘｽｸｽｺｱ':<8} {'推奨':<8} {'5日予測%':<10} {'30日予測%':<10}"
+        )
+        click.echo("-" * 80)
+
+        # データ行
+        for _, row in comparison_df.iterrows():
+            click.echo(
+                f"{row['銘柄']:<8} "
+                f"{row['現在価格']:<10.2f} "
+                f"{row['投資スコア']:<8.1f} "
+                f"{row['リスクスコア']:<8.1f} "
+                f"{row['推奨度']:<8} "
+                f"{row['5日後リターン予測']:<10.1f} "
+                f"{row['30日後リターン予測']:<10.1f}"
+            )
+
+        # トップ3表示
+        click.echo("\n🏆 投資スコア上位3銘柄:")
+        top_3 = comparison_df.nlargest(3, "投資スコア")
+        for i, (_, row) in enumerate(top_3.iterrows(), 1):
+            emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉"
+            click.echo(
+                f"  {emoji} {row['銘柄']}: スコア {row['投資スコア']:.1f} - {row['推奨度']}"
+            )
+
+        # CSV出力
+        if export_csv:
+            click.echo("\n💾 CSV出力中...")
+            try:
+                from datetime import datetime
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                csv_file = f"stock_comparison_{timestamp}.csv"
+                comparison_df.to_csv(csv_file, index=False, encoding="utf-8-sig")
+                click.echo(f"  📄 {csv_file}")
+
+            except Exception as e:
+                click.echo(f"❌ CSV出力エラー: {e}")
+
+        logger.info(f"CLI: 詳細比較完了 - {len(analysis_results)}銘柄")
+
+    except Exception as e:
+        logger.error(f"CLI: 詳細比較エラー: {e}")
         click.echo(f"❌ エラー: {e}", err=True)
         raise click.ClickException(str(e))
 
