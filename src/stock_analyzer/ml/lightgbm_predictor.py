@@ -159,8 +159,10 @@ class LightGBMStockPredictor:
             y_clean = y[valid_indices].copy()  # Ensure Series type
 
             # Type assertions to help pyright
-            assert isinstance(X_clean, pd.DataFrame), "X_clean should be DataFrame"
-            assert isinstance(y_clean, pd.Series), "y_clean should be Series"
+            if not isinstance(X_clean, pd.DataFrame):
+                raise TypeError("X_clean should be DataFrame")
+            if not isinstance(y_clean, pd.Series):
+                raise TypeError("y_clean should be Series")
 
             logger.debug(
                 f"有効データ数: {len(X_clean)}/{len(X)} ({len(X_clean) / len(X) * 100:.1f}%)"
@@ -497,8 +499,10 @@ if __name__ == "__main__":
             cv_metrics = result["cv_metrics"]
 
             # Type assertion to ensure these are dictionaries
-            assert isinstance(test_metrics, dict), "test_metrics should be dict"
-            assert isinstance(cv_metrics, dict), "cv_metrics should be dict"
+            if not isinstance(test_metrics, dict):
+                raise TypeError("test_metrics should be dict")
+            if not isinstance(cv_metrics, dict):
+                raise TypeError("cv_metrics should be dict")
 
             print(f"\n📈 {target_col} 予測結果:")
             print(f"テスト R²: {test_metrics['r2']:.3f}")

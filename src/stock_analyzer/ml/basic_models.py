@@ -152,7 +152,8 @@ class StockPricePredictor:
         logger.debug("特徴量スケーリング完了")
 
         # モデル訓練
-        assert self.model is not None, "Model should be initialized"
+        if self.model is None:
+            raise RuntimeError("Model should be initialized")
         self.model.fit(X_train_scaled, y_train)
         self.is_fitted = True
 
@@ -211,7 +212,8 @@ class StockPricePredictor:
         logger.debug(f"予測実行: サンプル数={len(X)}")
 
         X_scaled = self.scaler.transform(X)
-        assert self.model is not None, "Model should be fitted before prediction"
+        if self.model is None:
+            raise RuntimeError("Model should be fitted before prediction")
         predictions = self.model.predict(X_scaled)
 
         logger.debug("予測完了")
@@ -402,7 +404,8 @@ class StockDirectionClassifier:
         logger.debug("特徴量スケーリング完了")
 
         # モデル訓練
-        assert self.model is not None, "Model should be initialized"
+        if self.model is None:
+            raise RuntimeError("Model should be initialized")
         self.model.fit(X_train_scaled, y_train)
         self.is_fitted = True
 
