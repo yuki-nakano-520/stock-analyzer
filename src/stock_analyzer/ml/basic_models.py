@@ -1,11 +1,14 @@
 """scikit-learnを使った基本的な機械学習モデル（学習用）"""
 
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import joblib
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from sklearn.base import BaseEstimator
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import (
@@ -56,7 +59,7 @@ class StockPricePredictor:
         logger.info(f"株価予測モデル初期化: {model_type}")
 
         self.model_type = model_type
-        self.model = None
+        self.model: Union["BaseEstimator", None] = None
         self.scaler = StandardScaler()
         self.feature_names: List[str] = []
         self.is_fitted = False
@@ -149,6 +152,7 @@ class StockPricePredictor:
         logger.debug("特徴量スケーリング完了")
 
         # モデル訓練
+        assert self.model is not None, "Model should be initialized"
         self.model.fit(X_train_scaled, y_train)
         self.is_fitted = True
 
@@ -178,9 +182,9 @@ class StockPricePredictor:
                 zip(self.feature_names, importances, strict=False)
             )
             results["feature_importance"] = dict(
-                sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[
-                    :10
-                ]
+                sorted(
+                    feature_importance.items(), key=lambda x: float(x[1]), reverse=True
+                )[:10]
             )  # 上位10個のみ
 
         logger.info(
@@ -207,6 +211,7 @@ class StockPricePredictor:
         logger.debug(f"予測実行: サンプル数={len(X)}")
 
         X_scaled = self.scaler.transform(X)
+        assert self.model is not None, "Model should be fitted before prediction"
         predictions = self.model.predict(X_scaled)
 
         logger.debug("予測完了")
@@ -306,7 +311,7 @@ class StockDirectionClassifier:
         logger.info(f"株価方向性予測モデル初期化: {model_type}")
 
         self.model_type = model_type
-        self.model = None
+        self.model: Union["BaseEstimator", None] = None
         self.scaler = StandardScaler()
         self.feature_names: List[str] = []
         self.is_fitted = False
@@ -397,6 +402,7 @@ class StockDirectionClassifier:
         logger.debug("特徴量スケーリング完了")
 
         # モデル訓練
+        assert self.model is not None, "Model should be initialized"
         self.model.fit(X_train_scaled, y_train)
         self.is_fitted = True
 
@@ -426,9 +432,9 @@ class StockDirectionClassifier:
                 zip(self.feature_names, importances, strict=False)
             )
             results["feature_importance"] = dict(
-                sorted(feature_importance.items(), key=lambda x: x[1], reverse=True)[
-                    :10
-                ]
+                sorted(
+                    feature_importance.items(), key=lambda x: float(x[1]), reverse=True
+                )[:10]
             )  # 上位10個のみ
 
         logger.info(f"分類モデル評価完了 - テスト精度: {results['test_accuracy']:.3f}")

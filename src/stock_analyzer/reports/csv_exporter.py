@@ -316,10 +316,7 @@ class JapaneseCsvExporter:
         # カラム名を日本語に変換
         japanese_columns = {}
         for col in df.columns:
-            if col in self.column_mapping:
-                japanese_columns[col] = self.column_mapping[col]
-            else:
-                japanese_columns[col] = col
+            japanese_columns[col] = self.column_mapping.get(col, col)
 
         df = df.rename(columns=japanese_columns)
 

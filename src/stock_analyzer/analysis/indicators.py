@@ -40,7 +40,7 @@ def calculate_sma(data: pd.DataFrame, window: int = 20) -> pd.Series:
     logger.debug(f"SMA計算開始: 期間={window}日")
     sma = data["Close"].rolling(window=window).mean()
     logger.debug(f"SMA計算完了: {len(sma)}件")
-    return sma
+    return pd.Series(sma)  # Ensure return type is Series
 
 
 def calculate_ema(data: pd.DataFrame, window: int = 12) -> pd.Series:
@@ -61,7 +61,7 @@ def calculate_ema(data: pd.DataFrame, window: int = 12) -> pd.Series:
     logger.debug(f"EMA計算開始: 期間={window}日")
     ema = data["Close"].ewm(span=window, adjust=False).mean()
     logger.debug(f"EMA計算完了: {len(ema)}件")
-    return ema
+    return pd.Series(ema)  # Ensure return type is Series
 
 
 def calculate_rsi(data: pd.DataFrame, window: int = 14) -> pd.Series:

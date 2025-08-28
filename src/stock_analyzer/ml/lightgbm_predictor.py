@@ -155,8 +155,12 @@ class LightGBMStockPredictor:
             valid_indices = ~(
                 X.isnull().any(axis=1) | y.isnull() | np.isinf(y) | np.isnan(y)
             )
-            X_clean = X[valid_indices]
-            y_clean = y[valid_indices]
+            X_clean = X[valid_indices].copy()  # Ensure DataFrame type
+            y_clean = y[valid_indices].copy()  # Ensure Series type
+
+            # Type assertions to help pyright
+            assert isinstance(X_clean, pd.DataFrame), "X_clean should be DataFrame"
+            assert isinstance(y_clean, pd.Series), "y_clean should be Series"
 
             logger.debug(
                 f"有効データ数: {len(X_clean)}/{len(X)} ({len(X_clean) / len(X) * 100:.1f}%)"
@@ -270,12 +274,12 @@ class LightGBMStockPredictor:
 
         # 平均と標準偏差を計算
         cv_results = {
-            "rmse_mean": np.mean(cv_scores["rmse"]),
-            "rmse_std": np.std(cv_scores["rmse"]),
-            "mae_mean": np.mean(cv_scores["mae"]),
-            "mae_std": np.std(cv_scores["mae"]),
-            "r2_mean": np.mean(cv_scores["r2"]),
-            "r2_std": np.std(cv_scores["r2"]),
+            "rmse_mean": float(np.mean(cv_scores["rmse"])),
+            "rmse_std": float(np.std(cv_scores["rmse"])),
+            "mae_mean": float(np.mean(cv_scores["mae"])),
+            "mae_std": float(np.std(cv_scores["mae"])),
+            "r2_mean": float(np.mean(cv_scores["r2"])),
+            "r2_std": float(np.std(cv_scores["r2"])),
         }
 
         logger.debug(
@@ -292,6 +296,7 @@ class LightGBMStockPredictor:
         # 全モデルの特徴量重要度を平均
         importance_sum = {}
         for model_name, model in self.models.items():
+            logger.debug(f"特徴量重要度を集計中: {model_name}")
             for feature, importance in zip(
                 self.feature_names, model.feature_importances_, strict=False
             ):
@@ -348,7 +353,23 @@ class LightGBMStockPredictor:
 
             pred = self.models[target_col].predict(X)
             predictions[target_col] = pred
-            logger.debug(f"'{target_col}' 予測完了: {len(pred)}件")
+            # Safe length calculation for different prediction result types
+            if hasattr(pred, "shape") and pred.shape:
+                pred_count = pred.shape[0]
+            elif hasattr(pred, "__len__") and not hasattr(
+                pred, "toarray"
+            ):  # Avoid spmatrix
+                try:
+                    pred_count = len(pred)  # type: ignore[arg-type]
+                except TypeError:
+                    pred_count = (
+                        getattr(pred, "shape", [1])[0] if hasattr(pred, "shape") else 1
+                    )
+            else:
+                pred_count = (
+                    getattr(pred, "shape", [1])[0] if hasattr(pred, "shape") else 1
+                )
+            logger.debug(f"'{target_col}' 予測完了: {pred_count}件")
 
         return predictions
 
@@ -474,6 +495,10 @@ if __name__ == "__main__":
         for target_col, result in results.items():
             test_metrics = result["test_metrics"]
             cv_metrics = result["cv_metrics"]
+
+            # Type assertion to ensure these are dictionaries
+            assert isinstance(test_metrics, dict), "test_metrics should be dict"
+            assert isinstance(cv_metrics, dict), "cv_metrics should be dict"
 
             print(f"\n📈 {target_col} 予測結果:")
             print(f"テスト R²: {test_metrics['r2']:.3f}")
