@@ -19,8 +19,8 @@
 
 ```bash
 # 新しいリポジトリをクローン
-git clone https://github.com/yourusername/project-name.git
-cd project-name
+git clone https://github.com/yourusername/stock-analyzer.git
+cd stock-analyzer
 
 # セットアップ
 make setup
@@ -32,7 +32,7 @@ claude  # /initialize-projectを実行
 ```
 
 セットアップスクリプトは、以下の処理を自動的に実行します。
-- プロジェクト内のすべての `project_name` を、指定したプロジェクト名に置換
+- プロジェクト内のすべての `stock_analyzer` を、指定したプロジェクト名に置換
 - `uv` を使用してPythonの仮想環境を構築
 - Claude Codeをインストール
 - Gemini CLIをインストール
@@ -486,7 +486,7 @@ project-root/
 │   ├── ISSUE_TEMPLATE/          # Issueテンプレート
 │   └── PULL_REQUEST_TEMPLATE.md # Pull Requestテンプレート
 ├── src/
-│   └── project_name/            # メインパッケージ（`uv sync` でインストール可能）
+│   └── stock_analyzer/            # メインパッケージ（`uv sync` でインストール可能）
 │       ├── __init__.py
 │       ├── py.typed             # PEP 561に準拠した型情報マーカー
 │       ├── types.py             # プロジェクト共通の型定義

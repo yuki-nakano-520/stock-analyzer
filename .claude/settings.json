@@ -48,17 +48,5 @@
       "Bash(format /)"
     ]
   },
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "play assets/和太鼓でドドン.mp3"
-          }
-        ]
-      }
-    ]
-  }
+  "hooks": {}
 }

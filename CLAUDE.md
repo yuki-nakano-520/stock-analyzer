@@ -5,58 +5,52 @@ updated_at: 2025-07-14
 # このプロパティは、Claude Codeが関連するドキュメントの更新を検知するために必要です。消去しないでください。
 ---
 
-# Python開発テンプレート for Claude Code
+# Stock Analyzer
 
-適度な型チェック、自動化されたコード品質管理、CI/CDを備えたPython 3.12+プロジェクトテンプレート。
+米国株の傾向分析を行うCLIツール。株価データの取得・分析・可視化を通じて投資判断をサポートします。
 
 ## 技術スタック
 
 **Python 3.12+** | uv | Ruff | pyright | pytest + Hypothesis | pre-commit | GitHub Actions
 
-## プロジェクト構造(デフォルト。必要に応じて更新してください)
+## 主な機能
 
+- 株価データ取得（Alpha Vantage / Yahoo Finance API）
+- トレンド分析（移動平均、RSI、MACD等）
+- バックテスト機能
+- レポート生成（CLI出力 / CSV / JSON）
+- 銘柄スクリーニング
+
+## プロジェクト構造
 
 ```
-project-root/
-├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml
-│   │   └── benchmark.yml
-│   ├── dependabot.yml
-│   ├── ISSUE_TEMPLATE/
-│   └── PULL_REQUEST_TEMPLATE.md
-├── template/
-│   ├── src/
-│   │   └── template_package/    # モデルパッケージの完全な実装例
-│   │       ├── __init__.py      # パッケージエクスポートの例
-│   │       ├── py.typed         # 型情報マーカーの例
-│   │       ├── types.py         # 型定義のベストプラクティス
-│   │       ├── core/
-│   │       │   └── example.py   # クラス・関数実装の模範例
-│   │       └── utils/
-│   │           ├── helpers.py   # ユーティリティ関数の実装例
-│   │           ├── logging_config.py # ロギング設定の実装例
-│   │           └── profiling.py # パフォーマンス測定の実装例
-│   └── tests/                   # テストコードの完全な実装例
-│       ├── unit/                # 単体テスト
-│       ├── property/            # プロパティベーステスト
-│       ├── integration/         # 結合テスト
-│       └── conftest.py          # pytestフィクスチャ
-├── src/                         # 実際の開発用ディレクトリ
-│       └── project_name/
-│           └── （プロジェクト固有のパッケージを配置）
-├── tests/                       # 実際のテスト用ディレクトリ
-│   ├── unit/
-│   ├── property/
-│   ├── integration/
-│   └── conftest.py
+stock-analyzer/
+├── .github/                     # GitHub Actions & templates
+├── template/                    # 実装参考例（変更禁止）
+├── src/
+│   └── stock_analyzer/          # メインパッケージ
+│       ├── __init__.py
+│       ├── cli/                 # CLI関連
+│       │   ├── __init__.py
+│       │   └── main.py          # CLIエントリーポイント
+│       ├── data/                # データ取得・管理
+│       │   ├── __init__.py
+│       │   ├── fetchers.py      # API経由でのデータ取得
+│       │   └── storage.py       # データ永続化
+│       ├── analysis/            # 分析ロジック
+│       │   ├── __init__.py
+│       │   ├── indicators.py    # テクニカル指標
+│       │   ├── trends.py        # トレンド分析
+│       │   └── backtesting.py   # バックテスト
+│       ├── reports/             # レポート生成
+│       │   ├── __init__.py
+│       │   ├── formatters.py    # 出力フォーマット
+│       │   └── generators.py    # レポート生成
+│       ├── utils/               # 共通ユーティリティ
+│       └── types.py             # 型定義
+├── tests/                       # テストコード
 ├── docs/                        # ドキュメント
-├── scripts/
-├── pyproject.toml
-├── .gitignore
-├── .pre-commit-config.yaml
-├── README.md
-└── CLAUDE.md
+└── scripts/                     # ヘルパースクリプト
 ```
 
 ## 実装時の必須要件
@@ -308,6 +302,37 @@ with Timer("operation"):  # ブロック計測
 ## トラブルシューティング/FAQ
 
 適宜更新
+
+## Stock Analyzer 固有ガイド
+
+### 株価データ取得
+- **無料API制限**: Alpha Vantage（500/日）/ Yahoo Finance（レート制限あり）
+- **データ形式**: OHLCV（始値・高値・安値・終値・出来高）
+- **エラー処理**: API制限→フォールバック→キャッシュ利用
+
+### テクニカル分析
+- **移動平均**: SMA/EMA（5,20,50,200日）
+- **モメンタム**: RSI（14日）、MACD（12,26,9）
+- **ボラティリティ**: Bollinger Bands（20日,2σ）
+- **トレンド**: ADX、Parabolic SAR
+
+### バックテスト設計
+- **期間**: 最低1年、推奨3-5年
+- **手数料**: 売買コスト0.25%想定
+- **指標**: 勝率、最大ドローダウン、シャープレシオ
+- **検証**: Walk-forward analysis推奨
+
+### CLI使用例
+```bash
+# 基本分析
+uv run stock-analyzer analyze AAPL --period 1y
+
+# 複数銘柄スクリーニング
+uv run stock-analyzer screen --rsi-oversold --volume-spike
+
+# バックテスト
+uv run stock-analyzer backtest --strategy sma_crossover --period 3y
+```
 
 ## カスタムガイド
 
