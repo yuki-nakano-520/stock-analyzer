@@ -4,6 +4,9 @@ from typing import Any
 
 import click
 
+# ML予測機能をインポート
+from ..analysis.backtesting import BacktestSimulator
+
 # フィーチャー生成機能をインポート
 # テクニカル分析機能をインポート
 from ..analysis.indicators import analyze_signals, calculate_all_indicators
@@ -17,7 +20,6 @@ from ..config import PresetManager, get_config, get_preset_symbols
 # データ取得機能をインポート
 from ..data.fetchers import get_company_info, get_stock_data
 
-# ML予測機能をインポート
 # CSV出力機能をインポート
 from ..reports.csv_exporter import JapaneseCsvExporter
 
@@ -862,6 +864,328 @@ def config(
 
     except Exception as e:
         logger.error(f"CLI: 設定管理エラー: {e}")
+        click.echo(f"❌ エラー: {e}", err=True)
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.argument("symbol", type=str)
+@click.option(
+    "--investment-date",
+    required=True,
+    type=str,
+    help="投資日（例: 2024-07-01）",
+)
+@click.option(
+    "--validation-date",
+    required=True,
+    type=str,
+    help="検証日（例: 2024-08-25）",
+)
+@click.option(
+    "--training-months",
+    default=24,
+    type=int,
+    help="訓練期間（投資日から遡る月数）",
+)
+@click.option(
+    "--prediction-type",
+    default="direction",
+    type=click.Choice(["direction", "return"]),
+    help="予測タイプ（direction: 上昇/下降, return: リターン率）",
+)
+def backtest(
+    symbol: str,
+    investment_date: str,
+    validation_date: str,
+    training_months: int,
+    prediction_type: str,
+) -> None:
+    """
+    過去データを使った予測精度シミュレーション
+
+    指定した投資日時点での予測が、検証日時点で正しかったかを検証します。
+    データリーケージを防ぐため、投資日以降のデータは一切使用しません。
+
+    SYMBOL: 株式シンボル（例：AAPL, MSFT, GOOGL）
+    """
+    try:
+        logger.info(f"CLI: バックテスト開始 - {symbol}")
+
+        click.echo("🎯 予測精度シミュレーションを実行中...")
+        click.echo(f"銘柄: {symbol}")
+        click.echo(f"投資日: {investment_date}")
+        click.echo(f"検証日: {validation_date}")
+        click.echo(f"訓練期間: {training_months}ヶ月")
+        click.echo(f"予測タイプ: {prediction_type}")
+
+        # BacktestSimulatorを初期化
+        simulator = BacktestSimulator()
+
+        # シミュレーション実行
+        result = simulator.run_point_in_time_simulation(
+            symbol=symbol,
+            investment_date=investment_date,
+            validation_date=validation_date,
+            training_period_months=training_months,
+            prediction_type=prediction_type,
+        )
+
+        # 結果表示
+        click.echo("\n📊 シミュレーション結果:")
+        click.echo("=" * 60)
+
+        # 基本情報
+        click.echo(f"銘柄: {result['symbol']}")
+        click.echo(
+            f"投資期間: {result['investment_date']} → {result['validation_date']}"
+        )
+        click.echo(f"予測期間: {result['prediction_days']}日")
+        click.echo(f"予測タイプ: {result['prediction_type']}")
+
+        # 予測結果
+        click.echo("\n🔮 予測結果:")
+        prediction = result["prediction"]
+        if prediction_type == "direction":
+            confidence_pct = prediction["confidence"] * 100
+            click.echo(f"予測方向: {prediction['predicted_direction']}")
+            click.echo(f"信頼度: {confidence_pct:.1f}%")
+        else:
+            click.echo(f"予測リターン: {prediction['predicted_value']:.2f}%")
+
+        # 実際の結果
+        click.echo("\n📈 実際の結果:")
+        actual = result["actual"]
+        click.echo(f"投資価格: ${actual['investment_price']:.2f}")
+        click.echo(f"検証価格: ${actual['validation_price']:.2f}")
+        click.echo(f"実際リターン: {actual['actual_return']:.2f}%")
+        click.echo(f"実際方向: {actual['actual_direction']}")
+
+        # 評価結果
+        click.echo("\n🎯 評価結果:")
+        accuracy = result.get("accuracy", False)
+        accuracy_symbol = "✅ 正解" if accuracy else "❌ 不正解"
+        click.echo(f"予測精度: {accuracy_symbol}")
+        click.echo(f"信頼性スコア: {result['confidence_score']:.1f}/100")
+        click.echo(f"結果: {result['prediction_summary']}")
+
+        # 推奨アクション
+        confidence_score = result["confidence_score"]
+        if confidence_score >= 80:
+            recommendation = "🔥 このモデルは高精度です。実戦投入を検討できます。"
+        elif confidence_score >= 60:
+            recommendation = "⚡ モデル精度は中程度です。追加検証を推奨します。"
+        elif confidence_score >= 40:
+            recommendation = "⚠️  モデル精度が低めです。パラメータ調整が必要です。"
+        else:
+            recommendation = "🚨 モデル精度が不十分です。再設計を検討してください。"
+
+        click.echo(f"\n💡 推奨: {recommendation}")
+
+        logger.info(f"CLI: バックテスト完了 - {symbol}, 精度: {confidence_score:.1f}")
+
+    except Exception as e:
+        logger.error(f"CLI: バックテストエラー - {symbol}: {e}")
+        click.echo(f"❌ エラー: {e}", err=True)
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.argument("symbol", type=str)
+@click.option(
+    "--prediction-days",
+    default=30,
+    type=int,
+    help="予測日数（例: 30, 60）",
+)
+@click.option(
+    "--training-months",
+    default=24,
+    type=int,
+    help="訓練期間（現在から遡る月数）",
+)
+@click.option(
+    "--prediction-type",
+    default="direction",
+    type=click.Choice(["direction", "return"]),
+    help="予測タイプ（direction: 上昇/下降, return: リターン率）",
+)
+def predict(
+    symbol: str,
+    prediction_days: int,
+    training_months: int,
+    prediction_type: str,
+) -> None:
+    """
+    現在データを使った未来予測
+
+    最新の株価データを使って未来の価格動向を予測します。
+    実際の検証は予測期間後に可能になります。
+
+    SYMBOL: 株式シンボル（例：AAPL, MSFT, GOOGL）
+    """
+    try:
+        from datetime import datetime, timedelta
+
+        import pandas as pd
+
+        logger.info(f"CLI: 未来予測開始 - {symbol}")
+
+        # 現在日時を取得
+        today = datetime.now().strftime("%Y-%m-%d")
+        prediction_target_date = (
+            datetime.now() + timedelta(days=prediction_days)
+        ).strftime("%Y-%m-%d")
+
+        click.echo("🔮 未来予測を実行中...")
+        click.echo(f"銘柄: {symbol}")
+        click.echo(f"予測開始日: {today}")
+        click.echo(f"予測対象日: {prediction_target_date}")
+        click.echo(f"予測期間: {prediction_days}日後")
+        click.echo(f"訓練期間: {training_months}ヶ月")
+        click.echo(f"予測タイプ: {prediction_type}")
+
+        # 現在価格を取得
+        recent_data = get_stock_data(symbol, "5d")
+        current_price = recent_data["Close"].iloc[-1]
+        latest_date = recent_data.index[-1].strftime("%Y-%m-%d")
+
+        click.echo("\n📊 現在の状況:")
+        click.echo(f"最新日付: {latest_date}")
+        click.echo(f"現在価格: ${current_price:.2f}")
+
+        # 訓練データ期間を計算
+        training_start = datetime.now() - timedelta(days=training_months * 30)
+        training_start_str = training_start.strftime("%Y-%m-%d")
+
+        # 予測に使用する訓練データを取得
+        training_data = get_stock_data(symbol, f"{training_months}mo")
+
+        # 特徴量エンジニアリング
+        from ..analysis.features import FeatureEngineering
+
+        feature_engineer = FeatureEngineering()
+        features = feature_engineer.create_features(training_data)
+
+        # 目的変数作成（予測用）
+        def create_prediction_targets(data, prediction_days, prediction_type):
+            targets = pd.DataFrame(index=data.index)
+
+            if prediction_type == "direction":
+                # 方向性予測: 上昇=1, 下降=0
+                price_change = (
+                    data["Close"].pct_change(prediction_days).shift(-prediction_days)
+                )
+                targets[f"direction_{prediction_days}d"] = (price_change > 0).astype(
+                    int
+                )
+
+            elif prediction_type == "return":
+                # リターン予測: パーセント変化
+                targets[f"return_{prediction_days}d"] = (
+                    data["Close"].pct_change(prediction_days).shift(-prediction_days)
+                    * 100
+                )
+
+            # NaNを除去
+            targets = targets.dropna()
+            return targets
+
+        targets = create_prediction_targets(
+            training_data, prediction_days, prediction_type
+        )
+
+        # モデル訓練
+        from ..ml.lightgbm_predictor import LightGBMStockPredictor
+
+        predictor = LightGBMStockPredictor(f"predict_model_{prediction_days}d")
+
+        target_columns = [f"{prediction_type}_{prediction_days}d"]
+        predictor.train_model(
+            features, targets, target_columns=target_columns, n_splits=3
+        )
+
+        # 最新データで予測実行
+        latest_features = feature_engineer.create_features(training_data.tail(1))
+        predictions = predictor.predict(latest_features, target_columns)
+
+        prediction_value = predictions[f"{prediction_type}_{prediction_days}d"][0]
+
+        # 結果表示
+        click.echo(f"\n🔮 {prediction_days}日後の予測結果:")
+        click.echo("=" * 60)
+
+        if prediction_type == "direction":
+            predicted_direction = "上昇" if prediction_value > 0.5 else "下降"
+            confidence = abs(prediction_value - 0.5) * 2  # 0-1の信頼度
+            confidence_pct = confidence * 100
+
+            click.echo(f"予測方向: {predicted_direction}")
+            click.echo(f"信頼度: {confidence_pct:.1f}%")
+            click.echo(f"予測スコア: {prediction_value:.3f}")
+
+            # 価格目標の推定
+            if predicted_direction == "上昇":
+                estimated_return = 2 + confidence * 5  # 簡易推定
+                target_price = current_price * (1 + estimated_return / 100)
+                click.echo(f"推定リターン: +{estimated_return:.1f}%")
+            else:
+                estimated_return = 2 + confidence * 5
+                target_price = current_price * (1 - estimated_return / 100)
+                click.echo(f"推定リターン: -{estimated_return:.1f}%")
+
+            click.echo(f"目標価格: ${target_price:.2f}")
+
+        else:  # return prediction
+            click.echo(f"予測リターン: {prediction_value:.2f}%")
+            target_price = current_price * (1 + prediction_value / 100)
+            click.echo(f"目標価格: ${target_price:.2f}")
+
+        # 投資判断
+        click.echo("\n💡 投資判断:")
+        if prediction_type == "direction":
+            if predicted_direction == "上昇" and confidence > 0.6:
+                recommendation = "🚀 強い買い推奨"
+            elif predicted_direction == "上昇" and confidence > 0.3:
+                recommendation = "📈 買い検討"
+            elif predicted_direction == "下降" and confidence > 0.6:
+                recommendation = "🔻 売り/回避推奨"
+            elif predicted_direction == "下降" and confidence > 0.3:
+                recommendation = "📉 慎重検討"
+            else:
+                recommendation = "➡️ 中立・様子見"
+        elif prediction_value > 5:
+            recommendation = "🚀 強い買い推奨"
+        elif prediction_value > 2:
+            recommendation = "📈 買い検討"
+        elif prediction_value < -5:
+            recommendation = "🔻 売り/回避推奨"
+        elif prediction_value < -2:
+            recommendation = "📉 慎重検討"
+        else:
+            recommendation = "➡️ 中立・様子見"
+
+        click.echo(f"{recommendation}")
+
+        # 注意事項
+        click.echo("\n⚠️  注意事項:")
+        click.echo("• この予測は過去データに基づく推定です")
+        click.echo("• 市場の突発的な変動は予測できません")
+        click.echo("• 投資判断は複数の情報を総合して行ってください")
+        click.echo(f"• {prediction_target_date}に実際の結果を確認してください")
+
+        # 検証コマンドの提案
+        validation_cmd = (
+            f"uv run python -m stock_analyzer.cli.main backtest {symbol} "
+            f"--investment-date {today} --validation-date {prediction_target_date}"
+        )
+        click.echo(f"\n🔍 {prediction_target_date}以降に予測精度を検証するコマンド:")
+        click.echo(f"{validation_cmd}")
+
+        logger.info(f"CLI: 未来予測完了 - {symbol}, 予測: {prediction_value:.3f}")
+
+    except Exception as e:
+        logger.error(f"CLI: 未来予測エラー - {symbol}: {e}")
         click.echo(f"❌ エラー: {e}", err=True)
         raise click.ClickException(str(e)) from e
 

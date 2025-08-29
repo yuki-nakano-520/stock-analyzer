@@ -359,6 +359,52 @@ def clean_features(
     return features, targets
 
 
+class FeatureEngineering:
+    """
+    特徴量エンジニアリングを行うクラス
+
+    BacktestSimulatorなどから使用される統一インターフェース
+    """
+
+    def __init__(self):
+        """特徴量エンジニアリングクラスを初期化"""
+        logger.info("FeatureEngineering初期化")
+
+    def create_features(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        株価データから特徴量を作成
+
+        Args:
+            data (pd.DataFrame): 株価データ（OHLCV）
+
+        Returns:
+            pd.DataFrame: 作成された特徴量
+        """
+        logger.debug(f"特徴量作成開始: データ期間 {len(data)}件")
+
+        # 各種特徴量を作成
+        price_features = create_price_features(data)
+        technical_features = create_technical_features(data)
+        volume_features = create_volume_features(data)
+        pattern_features = create_pattern_features(data)
+
+        # 特徴量をまとめる
+        all_features = pd.concat(
+            [price_features, technical_features, volume_features, pattern_features],
+            axis=1,
+        )
+
+        # 基本的な株価情報も含める（予測に必要）
+        all_features["open"] = data["Open"]
+        all_features["high"] = data["High"]
+        all_features["low"] = data["Low"]
+        all_features["close"] = data["Close"]
+        all_features["volume"] = data["Volume"]
+
+        logger.debug(f"特徴量作成完了: {len(all_features.columns)}個の特徴量")
+        return all_features
+
+
 # 使用例（このファイルを直接実行した時のみ動作）
 if __name__ == "__main__":
     # ロギング設定
