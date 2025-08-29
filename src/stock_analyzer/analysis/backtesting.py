@@ -180,7 +180,7 @@ class BacktestSimulator:
 
         filtered_data = data[(data.index >= start_date) & (data.index <= end_date)]
         # 型チェッカーのために明示的にDataFrameであることを保証
-        assert isinstance(filtered_data, pd.DataFrame)
+        assert isinstance(filtered_data, pd.DataFrame)  # nosec B101
 
         logger.debug(
             f"取得データ期間: {filtered_data.index.min()} ~ {filtered_data.index.max()} ({len(filtered_data)}件)"
@@ -234,8 +234,8 @@ class BacktestSimulator:
         ]
 
         # 型チェッカーのために明示的にDataFrameであることを保証
-        assert isinstance(train_data, pd.DataFrame)
-        assert isinstance(validation_data, pd.DataFrame)
+        assert isinstance(train_data, pd.DataFrame)  # nosec B101
+        assert isinstance(validation_data, pd.DataFrame)  # nosec B101
 
         logger.debug(
             f"データ分割: 訓練={len(train_data)}件, 検証={len(validation_data)}件"
